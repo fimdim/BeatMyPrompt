@@ -1,0 +1,90 @@
+name: Provision Azure Resources
+
+on:
+  workflow_dispatch:
+    inputs:
+      resourceGroupName:
+        description: 'Azure Resource Group name'
+        required: true
+        default: 'rg-beatmyprompt'
+      location:
+        description: 'Azure region'
+        required: true
+        default: 'eastus2'
+      staticWebAppName:
+        description: 'Static Web App name'
+        required: true
+        default: 'beatmyprompt'
+      sku:
+        description: 'Static Web App SKU'
+        required: true
+        default: 'Free'
+        type: choice
+        options:
+          - Free
+          - Standard
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  provision:
+    runs-on: ubuntu-latest
+    name: Provision Azure Infrastructure
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Create Resource Group
+        uses: azure/cli@v2
+        with:
+          inlineScript: |
+            az group create \
+              --name ${{ inputs.resourceGroupName }} \
+              --location ${{ inputs.location }}
+
+      - name: Deploy Bicep Template
+        uses: azure/arm-deploy@v2
+        id: deploy
+        with:
+          resourceGroupName: ${{ inputs.resourceGroupName }}
+          template: ./infra/main.bicep
+          parameters: >
+            staticWebAppName=${{ inputs.staticWebAppName }}
+            sku=${{ inputs.sku }}
+          failOnStdErr: false
+
+      - name: Get Deployment Token
+        uses: azure/cli@v2
+        id: token
+        with:
+          inlineScript: |
+            TOKEN=$(az staticwebapp secrets list \
+              --name ${{ inputs.staticWebAppName }} \
+              --resource-group ${{ inputs.resourceGroupName }} \
+              --query "properties.apiKey" -o tsv)
+            echo "::add-mask::$TOKEN"
+            echo "deploymentToken=$TOKEN" >> $GITHUB_OUTPUT
+
+      - name: Summary
+        run: |
+          echo "## Azure Resources Provisioned" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Resource | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| **Resource Group** | \`${{ inputs.resourceGroupName }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Static Web App** | \`${{ inputs.staticWebAppName }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Hostname** | ${{ steps.deploy.outputs.defaultHostname }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **SKU** | ${{ inputs.sku }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "> **Next step:** Add the deployment token as a GitHub secret named \`AZURE_STATIC_WEB_APPS_API_TOKEN\`." >> $GITHUB_STEP_SUMMARY
+          echo "> Run: \`gh secret set AZURE_STATIC_WEB_APPS_API_TOKEN --body <token>\`" >> $GITHUB_STEP_SUMMARY
