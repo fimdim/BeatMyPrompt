@@ -5,10 +5,6 @@
 
 ![BeatMyPrompt Screenshot](resources/BeatMyPrompt-image.png)
 
-### Demo Video
-
-https://github.com/fimdim/BeatMyPrompt/raw/main/resources/BeatMyPrompt-video.mp4
-
 ## Elevator Pitch
 
 **BeatMyPrompt** is a live AI battle experience where two AI‑generated verses go head‑to‑head, and the **audience decides the winner using their applause**.
